@@ -58,6 +58,7 @@ interface UXRecommendation {
   implementation: string;
   expected_impact: string;
   effort: string;
+  element?: string;
   screenshot?: string;
   is_implemented: boolean;
 }

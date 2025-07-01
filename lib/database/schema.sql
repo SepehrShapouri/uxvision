@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS recommendations (
     implementation TEXT NOT NULL, -- How to implement the recommendation
     expected_impact TEXT NOT NULL, -- Expected improvement description
     effort TEXT NOT NULL CHECK (effort IN ('low', 'medium', 'high')),
+    element TEXT, -- CSS selector of element to improve
     screenshot TEXT, -- Base64 mini-screenshot showing what to improve
     is_implemented BOOLEAN DEFAULT FALSE,
     implemented_at TIMESTAMPTZ,

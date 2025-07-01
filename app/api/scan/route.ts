@@ -38,6 +38,7 @@ interface UXRecommendation {
   implementation: string;
   expectedImpact: string;
   effort: "low" | "medium" | "high";
+  element?: string; // CSS selector of element to improve
   screenshot?: string; // Base64 mini-screenshot showing what to improve
 }
 
@@ -162,6 +163,7 @@ export async function POST(request: Request) {
             effort: validEfforts.includes(rec.effort.toLowerCase().trim()) 
               ? rec.effort.toLowerCase().trim() 
               : 'medium', // Default fallback
+            element: rec.element || null,
             screenshot: rec.screenshot || null,
           }))
           .filter(rec => rec.title && rec.description && rec.implementation); // Only include recs with required fields
@@ -439,6 +441,8 @@ Focus on:
 - Information architecture
 - Navigation usability
 
+IMPORTANT: For each issue, try to identify the specific element causing the problem by looking at the provided page structure data. Use precise CSS selectors when possible.
+
 Return the analysis in this JSON format:
 {
   "score": number,
@@ -448,7 +452,7 @@ Return the analysis in this JSON format:
       "severity": "high|medium|low", 
       "title": "Issue title",
       "description": "Detailed description",
-      "element": "CSS selector or description of element",
+      "element": "Precise CSS selector of the problematic element (e.g., 'nav .btn-primary', 'header h1', '.hero-section button')",
       "impact": "Impact on user experience"
     }
   ],
@@ -459,7 +463,8 @@ Return the analysis in this JSON format:
       "description": "What to change",
       "implementation": "How to implement the change",
       "expectedImpact": "Expected improvement",
-      "effort": "low|medium|high"
+      "effort": "low|medium|high",
+      "element": "CSS selector of element to improve (if applicable)"
     }
   ],
   "summary": "Brief 2-3 sentence summary of key findings"
@@ -541,80 +546,94 @@ Return the analysis in this JSON format:
       };
     }
     
-    // Create individual element screenshots for issues and recommendations
+    // Create individual element screenshots for issues and recommendations using AI-provided selectors
     if (screenshot && analysis.issues && analysis.issues.length > 0) {
-      console.log('Creating individual issue screenshots...');
+      console.log('Creating targeted issue screenshots...');
       
       for (let i = 0; i < analysis.issues.length; i++) {
         const issue = analysis.issues[i];
         
-        // Try to find element bounds for this issue
-        let elementBounds = null;
-        switch (issue.category) {
-          case 'layout':
-            elementBounds = pageData.elementBounds?.navigation || pageData.elementBounds?.header;
-            break;
-          case 'conversion':
-            elementBounds = pageData.elementBounds?.primaryCTA || pageData.elementBounds?.forms;
-            break;
-          case 'accessibility':
-            elementBounds = pageData.elementBounds?.navigation || pageData.elementBounds?.mainContent;
-            break;
-          case 'mobile':
-            elementBounds = pageData.elementBounds?.header || pageData.elementBounds?.navigation;
-            break;
-          case 'performance':
-            // For performance, capture top of page
-            elementBounds = { x: 0, y: 0, width: pageData.viewport.width, height: 400 };
-            break;
-        }
-        
-        if (elementBounds && elementBounds.width > 0 && elementBounds.height > 0) {
+        if (issue.element && issue.element.trim()) {
           try {
-            const elementScreenshot = await captureElementScreenshot(
-              screenshot,
-              elementBounds,
-              pageData.viewport
-            );
-            if (elementScreenshot) {
-              analysis.issues[i].screenshot = elementScreenshot;
-              analysis.issues[i].bounds = elementBounds;
-            }
-          } catch (error) {
-            console.log(`Failed to capture screenshot for issue ${i}:`, error);
-          }
-        }
-      }
-      
-      // Create screenshots for top priority recommendations too
-      if (analysis.recommendations && analysis.recommendations.length > 0) {
-        for (let i = 0; i < Math.min(analysis.recommendations.length, 3); i++) { // Limit to top 3
-          const rec = analysis.recommendations[i];
-          
-          // Map recommendation to element bounds based on content
-          let elementBounds = null;
-          if (rec.title.toLowerCase().includes('button') || rec.title.toLowerCase().includes('cta')) {
-            elementBounds = pageData.elementBounds?.primaryCTA;
-          } else if (rec.title.toLowerCase().includes('navigation') || rec.title.toLowerCase().includes('nav')) {
-            elementBounds = pageData.elementBounds?.navigation;
-          } else if (rec.title.toLowerCase().includes('form')) {
-            elementBounds = pageData.elementBounds?.forms;
-          } else if (rec.title.toLowerCase().includes('header')) {
-            elementBounds = pageData.elementBounds?.header;
-          }
-          
-          if (elementBounds && elementBounds.width > 0 && elementBounds.height > 0) {
-            try {
+            // Use Puppeteer to find the specific element and get its bounds
+            const elementBounds = await page.evaluate((selector) => {
+              try {
+                const element = document.querySelector(selector);
+                if (element) {
+                  const rect = element.getBoundingClientRect();
+                  return {
+                    x: Math.round(rect.x),
+                    y: Math.round(rect.y),
+                    width: Math.round(rect.width),
+                    height: Math.round(rect.height)
+                  };
+                }
+              } catch (e) {
+                console.log('Element not found:', selector);
+              }
+              return null;
+            }, issue.element);
+            
+            if (elementBounds && elementBounds.width > 0 && elementBounds.height > 0) {
               const elementScreenshot = await captureElementScreenshot(
                 screenshot,
                 elementBounds,
                 pageData.viewport
               );
               if (elementScreenshot) {
-                analysis.recommendations[i].screenshot = elementScreenshot;
+                analysis.issues[i].screenshot = elementScreenshot;
+                analysis.issues[i].bounds = elementBounds;
+                console.log(`✓ Captured screenshot for issue: ${issue.title}`);
+              }
+            } else {
+              console.log(`✗ Element not found or invalid bounds for: ${issue.element}`);
+            }
+          } catch (error) {
+            console.log(`Failed to capture screenshot for issue "${issue.title}":`, (error as Error).message);
+          }
+        }
+      }
+      
+      // Create screenshots for recommendations with specific elements
+      if (analysis.recommendations && analysis.recommendations.length > 0) {
+        console.log('Creating targeted recommendation screenshots...');
+        
+        for (let i = 0; i < analysis.recommendations.length; i++) {
+          const rec = analysis.recommendations[i];
+          
+          if (rec.element && rec.element.trim()) {
+            try {
+              const elementBounds = await page.evaluate((selector) => {
+                try {
+                  const element = document.querySelector(selector);
+                  if (element) {
+                    const rect = element.getBoundingClientRect();
+                    return {
+                      x: Math.round(rect.x),
+                      y: Math.round(rect.y),
+                      width: Math.round(rect.width),
+                      height: Math.round(rect.height)
+                    };
+                  }
+                } catch (e) {
+                  console.log('Element not found:', selector);
+                }
+                return null;
+              }, rec.element);
+              
+              if (elementBounds && elementBounds.width > 0 && elementBounds.height > 0) {
+                const elementScreenshot = await captureElementScreenshot(
+                  screenshot,
+                  elementBounds,
+                  pageData.viewport
+                );
+                if (elementScreenshot) {
+                  analysis.recommendations[i].screenshot = elementScreenshot;
+                  console.log(`✓ Captured screenshot for recommendation: ${rec.title}`);
+                }
               }
             } catch (error) {
-              console.log(`Failed to capture screenshot for recommendation ${i}:`, error);
+                             console.log(`Failed to capture screenshot for recommendation "${rec.title}":`, (error as Error).message);
             }
           }
         }
