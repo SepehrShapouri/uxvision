@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
 import OpenAI from "openai";
 import sharp from "sharp";
 
@@ -218,10 +219,12 @@ async function performUXAnalysis(url: string): Promise<UXAnalysisResult> {
   let browser;
   
   try {
-    // Launch Puppeteer browser
+    // Launch Puppeteer browser with serverless-compatible configuration
+    const isProduction = process.env.NODE_ENV === 'production';
+    
     browser = await puppeteer.launch({
-      headless: true,
       args: [
+        ...(isProduction ? chromium.args : []),
         '--no-sandbox', 
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
@@ -229,7 +232,10 @@ async function performUXAnalysis(url: string): Promise<UXAnalysisResult> {
         '--no-first-run',
         '--no-zygote',
         '--disable-gpu'
-      ]
+      ],
+      defaultViewport: isProduction ? chromium.defaultViewport : { width: 1920, height: 1080 },
+      executablePath: isProduction ? await chromium.executablePath() : undefined,
+      headless: isProduction ? chromium.headless : true,
     });
     
     const page = await browser.newPage();
@@ -238,7 +244,10 @@ async function performUXAnalysis(url: string): Promise<UXAnalysisResult> {
     page.setDefaultTimeout(60000); // 60 seconds
     page.setDefaultNavigationTimeout(60000);
     
-    await page.setViewport({ width: 1920, height: 1080 });
+    // Set viewport only if not already set by chromium
+    if (!isProduction) {
+      await page.setViewport({ width: 1920, height: 1080 });
+    }
     
     // Set user agent to avoid bot detection
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -556,9 +565,9 @@ Return the analysis in this JSON format:
         if (issue.element && issue.element.trim()) {
           try {
             // Use Puppeteer to find the specific element and get its bounds
-            const elementBounds = await page.evaluate((selector) => {
-              try {
-                const element = document.querySelector(selector);
+                         const elementBounds = await page.evaluate((selector: string) => {
+               try {
+                 const element = document.querySelector(selector);
                 if (element) {
                   const rect = element.getBoundingClientRect();
                   return {
@@ -603,7 +612,7 @@ Return the analysis in this JSON format:
           
           if (rec.element && rec.element.trim()) {
             try {
-              const elementBounds = await page.evaluate((selector) => {
+              const elementBounds = await page.evaluate((selector: string) => {
                 try {
                   const element = document.querySelector(selector);
                   if (element) {
