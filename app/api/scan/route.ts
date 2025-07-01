@@ -298,8 +298,7 @@ async function performUXAnalysis(url: string): Promise<UXAnalysisResult> {
       // Get full page screenshot for AI analysis
       screenshot = await page.screenshot({ 
         encoding: 'base64',
-        fullPage: true, // Full page for complete analysis
-        quality: 80 // Compress a bit to manage file size
+        fullPage: true // Full page for complete analysis
       });
       console.log('Full page screenshot captured successfully');
      } catch (screenshotError) {
