@@ -2,9 +2,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
+    "build": "next build && npm run install-chrome",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "install-chrome": "npx puppeteer install chrome"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.1.1",
