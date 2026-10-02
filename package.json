@@ -1,9 +1,9 @@
 {
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "pnpm post-install && next build",
-    "start": "next start",
+    "dev": "node init && next dev --turbopack",
+    "build": "node init && pnpm post-install && next build",
+    "start": "node init && next start",
     "lint": "next lint",
     "post-install": "npx puppeteer install chrome"
   },
